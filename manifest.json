@@ -1,0 +1,22 @@
+{
+    "manifest_version": 3,
+    "name": "Email Classifier",
+    "version": "1.0",
+    "description": "Reduces corporate jargon in emails",
+    "permissions": [
+        "storage"
+    ],
+    "host_permissions": [
+        "https://mail.google.com/*"
+    ],
+    "content_scripts": [
+        {
+            "matches": [
+                "https://mail.google.com/*"
+            ],
+            "js": [
+                "classifier.js", "content.js"
+            ]
+        }
+    ]
+}
