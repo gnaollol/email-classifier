@@ -1,5 +1,11 @@
 console.log("Did I get an interview or offer yet? Has Loaded");
 
+console.log("[Matcher] Scanning Gmail inbox...");
+
+const emails = document.querySelectorAll("tr.zA");
+
+console.log("[Matcher] Rows found:", emails.length);
+
 function addBadge(emailRow, classification) {
     if (classification === "UNKNOWN") return;
 
@@ -25,7 +31,7 @@ function addBadge(emailRow, classification) {
     if (classification === "REJECTION") {
         badge.style.backgroundColor = "#FEE2E2";
         badge.style.color = "#991B1B";
-    } else if (classification === "INTERVIEw") {
+    } else if (classification === "INTERVIEW") {
         badge.style.backgroundColor = "#DCFCE7";
         badge.style.color = "#166534";
     } else if (classification === "OFFER") {
@@ -36,31 +42,105 @@ function addBadge(emailRow, classification) {
     subject.insertAdjacentElement("afterend", badge);
 }
 
-function detectEmails() {
-    // tr.zA = selector for email row
-    // .bog = selector for subject line 
-    // yP or zF = sender name
-    // y2 = email preview
+const processedRows = new WeakMap();
+
+async function detectEmails() {
     const emails = document.querySelectorAll("tr.zA");
 
-    emails.forEach((email) => {
+    console.log("[Matcher] Rows found:", emails.length);
 
-        if (email.querySelector(".intent-badge")) return;
+    for (const emailRow of Array.from(emails).slice(0, 10)) {
 
-        const emailData = {
-            sender: email.querySelector(".yP, .zF")?.innerText ?? "",
-            subject: email.querySelector(".bog")?.innerText ?? "",
-            preview: email.querySelector(".y2")?.innerText ?? ""
-        };
+        // Find the message ID inside the email row
+        const messageElement = emailRow.querySelector(
+            "[data-legacy-last-non-draft-message-id]"
+        );
 
-        if(!emailData.subject) return;
+        const messageId = messageElement?.getAttribute(
+            "data-legacy-last-non-draft-message-id"
+        );
 
-        const classification = classifyEmail(emailData);
+        if (!messageId) continue;
 
-        addBadge(email, classification);
+        // Prevent duplicate API requests
+        if (processedRows.get(emailRow) === messageId) continue;
+
+        processedRows.set(emailRow, messageId);
+
+        try {
+            // Ask background.js to retrieve the email
+            const response = await chrome.runtime.sendMessage({
+                type: "GET_EMAIL_BY_ID",
+                messageId
+            });
+
+            if (!response?.success) {
+                throw new Error(response?.error ?? "Lookup failed");
+            }
+
+            // Recheck the ID because Gmail can update the DOM
+            const currentMessageId = emailRow.querySelector(
+                "[data-legacy-last-non-draft-message-id]"
+            )?.getAttribute("data-legacy-last-non-draft-message-id");
+
+            if (
+                !emailRow.isConnected ||
+                currentMessageId !== response.messageId
+            ) {
+                continue;
+            }
+
+            // Extract email details
+            const emailData = {
+                subject: emailRow.querySelector(".bog")?.innerText ?? "",
+                preview: emailRow.querySelector(".y2")?.innerText ?? "",
+                body: response.body ?? ""
+            };
+
+            // Classify the email
+            const classification = classifyEmail(emailData);
+
+            console.log("[Matcher] Successful match:", {
+                messageId: response.messageId,
+                classification
+            });
+
+            // Display the badge
+            addBadge(emailRow, classification);
+
+        } catch (error) {
+            processedRows.delete(emailRow);
+            console.error("[Matcher] Error:", error);
+        }
+    }
+}
+
+async function testMessageMatching() {
+    const row = document.querySelector("tr.zA");
+    if (!row) return;
+
+    const messageId = row.querySelector(
+        "[data-legacy-last-non-draft-message-id]"
+    )?.getAttribute("data-legacy-last-non-draft-message-id");
+
+    if (!messageId) {
+        console.log("[Matcher] No message ID found");
+        return;
+    }
+
+    const response = await chrome.runtime.sendMessage({
+        type: "GET_EMAIL_BY_ID",
+        messageId
+    });
+
+    console.log("[Matcher] API match:", {
+        requestedId: messageId,
+        returnedId: response.messageId,
+        matched: response.success &&
+            response.messageId === messageId
     });
 }
-detectEmails();
+
 
 
 let debounceTimer;
@@ -70,10 +150,14 @@ const observer = new MutationObserver(() => {
 
     debounceTimer = setTimeout(() => {
         detectEmails();
-    }, 150);
+    }, 300);
 });
 
 observer.observe(document.body, {
     childList: true,
     subtree: true
-})
+});
+
+
+detectEmails();
+testMessageMatching();

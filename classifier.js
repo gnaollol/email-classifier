@@ -1,5 +1,5 @@
 function classifyEmail(email) {
-    const text = `${email.subject} ${email.preview}` 
+    const text = `${email.subject ?? " "} ${email.preview ?? ""} ${email.body ?? ""}` 
     .toLowerCase();
 
     if(
@@ -19,7 +19,8 @@ function classifyEmail(email) {
 
     if (
         text.includes ("pleased to offer") ||
-        text.includes ("offer of employment")
+        text.includes ("offer of employment") ||
+        text.includes ("Congratulations!")
     ) {
         return "OFFER";
     }
