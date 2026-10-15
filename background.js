@@ -1,5 +1,48 @@
 importScripts("emailParser.js");
 
+let creatingOffscreen;
+
+async function ensureOffscreenDocument() {
+    const exists = await chrome.offscreen.hasDocument();
+
+    if (exists) {
+        return;
+    }
+
+    if (!creatingOffscreen) {
+        creatingOffscreen = chrome.offscreen.createDocument({
+            url: "offscreen.html",
+            reasons: ["DOM_PARSER"],
+            justification: "Convert Gmail HTML email bodies into readable text"
+        });
+    }
+
+    try {
+        await creatingOffscreen;
+    } finally {
+        creatingOffscreen = null;
+    }
+}
+
+async function convertToHtmlText(html) {
+    await ensureOffscreenDocument();
+
+    const response = await chrome.runtime.sendMessage({
+        target: "offscreen",
+        type: "PARSE_HTML",
+        html
+    });
+
+    if (!repsonse?.success) {
+        throw new Error(
+            response?.error ?? "HTML parsing failed"
+        );
+    }
+    return response.text;
+}
+
+
+
 async function getEmailDetails(messageId, token) {
     const response = await fetch(
         `https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(messageId)}?format=full`,
@@ -77,7 +120,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
             if (firstMessage) {
                 const email = await getEmailDetails(firstMessage.id, token);
-                const body = extractEmailBody(email);
+                const body = await extractEmailBody(email);
 
                 console.log("Body extracted:", body.length > 0);
                 console.log("Body character count:", body.length);
@@ -119,45 +162,45 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if(request.type !== "GET_EMAIL_BY_ID") {
-        return; 
+    if (request.type !== "GET_EMAIL_BY_ID") {
+        return;
     }
 
     (async () => {
         try {
             const messageId = request.messageId;
 
-            if(!/^[a-f0-9]+$/i.test(messageId ?? "")){
+            if (!/^[a-f0-9]+$/i.test(messageId ?? "")) {
                 throw new Error("Invalid Gmail Message ID");
             }
 
-            const {token} = await chrome.identity.getAuthToken({
-                interactive : false
+            const { token } = await chrome.identity.getAuthToken({
+                interactive: false
             });
 
-            if(!token){
+            if (!token) {
                 throw new Error("Connect Gmail from the extension popup first");
             }
 
             const email = await getEmailDetails(messageId, token);
 
-            if(email.id !== messageId){
+            if (email.id !== messageId) {
                 throw new Error("Message Id mismatch")
             }
 
-            const body = extractEmailBody(email);
+            const body = await extractEmailBody(email);
 
             sendResponse({
-                success : true,
-                messageId : email.id,
+                success: true,
+                messageId: email.id,
                 body
             });
-        } catch ( error ){
+        } catch (error) {
             console.error("Message lookup failed.. ", error);
 
             sendResponse({
-                success : false,
-                error : error.message
+                success: false,
+                error: error.message
             });
         }
     })();

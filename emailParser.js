@@ -27,11 +27,11 @@ function findEmailPart(part, mimeType){
     return null;
 }
 
-function extractEmailBody(message){
+async function extractEmailBody(message){
     const payload = message.payload;
 
     if(!payload){
-        return "";
+        return message.snippet ?? "";
     }
 
     const plainText = findEmailPart(payload, "text/plain");
@@ -45,7 +45,7 @@ function extractEmailBody(message){
     if(html){
         const decodedHtml = decodeBase64Url(html);
 
-       return decodedHtml;
+       return await convertToHtmlText(decodedHtml);
     }
 
     return message.snippet ?? "";

@@ -5,7 +5,8 @@
     "description": "Reduces corporate jargon in emails",
     "permissions": [
         "storage",
-        "identity"
+        "identity",
+        "offscreen"
     ],
     "host_permissions": [
         "https://mail.google.com/*",
